@@ -1,22 +1,73 @@
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from app.repository.mongodb import get_mongodb_database
 from app.schemas import OutlineNode, ProjectStatus, ResearchProjectCreate, ReportSource, utc_now
 
 COLLECTION_NAME = "research_projects"
 
+async def create_project(request: ResearchProjectCreate):
+
+    project_id=str(uuid4())
+    project_document={
+        "_id":project_id,
+        "topic":request.topic,
+        "status":ProjectStatus.CREATED.value,
+        "request":request.model_dump(),
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+
+    }
+
+
+    await (get_mongodb_database()[COLLECTION_NAME]
+           .insert_one(project_document))
+
+
+
+    return project_id
+
 
 async def update_status(project_id: str, status: str):
-    pass
+    await (get_mongodb_database()[COLLECTION_NAME]
+           .update_one(
+        {"_id":project_id},
+        {
+            "$set":
+                {
+                    "status":status
+                }
+        }
+    ))
+
 
 
 async def save_outline(outline, project_id):
-    pass
+
+    await (get_mongodb_database()[COLLECTION_NAME]
+           .update_one(
+        {"_id":project_id},
+        {
+            "$set":
+                {
+                    "outline":outline["outline"],
+                    "research_brief":outline["research_brief"]
+                }
+        }
+    ))
+
+
 
 async def get_research_result(project_id: str):
-    pass
-
+    result=await (get_mongodb_database()[COLLECTION_NAME]
+           .find_one(
+        {"_id":project_id},
+       projection={
+           "research_result":1
+        }
+    ))
+    return result
 
 
 

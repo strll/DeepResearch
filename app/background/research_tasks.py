@@ -32,15 +32,15 @@ async def _start_report_generate(task_id: str, project_id: str, user_instruction
         research_agent_res = research_agent.get_research_agent()
 
         await research_agent_res.generate_research_result(project_id=project_id,
-                                                      user_instruction=user_instruction
-
-                                                      )
+                                                          user_instruction=user_instruction
+                                                          , task_id=task_id
+                                                          )
 
         research_result = await research_project_repository.get_research_result(project_id=project_id)
 
-        html_result=write_html(research_result)
+        html_result = write_html(research_result)
 
-        await report_repository.save_html_result(html_result,project_id)
+        await report_repository.save_html_result(html_result, project_id)
 
         await update_project_status(project_id=project_id, status=ProjectStatus.REPORT_READY)
 
@@ -69,7 +69,8 @@ async def _start_outline_generation(research_project, task_id, project_id):
     try:
         await update_status(task_id=task_id, status=TaskStatus.RUNNING)
         research_agent = get_research_agent()
-        outline = await research_agent.generate_outline(project_id=project_id, research_project=research_project)
+        outline = await research_agent.generate_outline(project_id=project_id, research_project=research_project,
+                                                        task_id=task_id)
 
         await research_project_repository.save_outline(outline=outline, project_id=project_id)
 

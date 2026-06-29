@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     所有字段均可通过大写环境变量覆盖，例如 ``MONGODB_URI`` 对应
     ``mongodb_uri``。``.env`` 文件中的空值会被安全地解析为 ``None``。
     """
-
+    total_retry_times: int = 5
     app_name: str = "AI 研究报告工作台"
     app_version: str = "0.1.0"
     environment: str = "local"

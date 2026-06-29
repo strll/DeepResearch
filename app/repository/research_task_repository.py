@@ -1,12 +1,46 @@
 from datetime import datetime
+from uuid import uuid4
 
+from app.config.config import get_settings
 from app.repository.mongodb import get_mongodb_database
 from app.schemas import TaskStatus, TaskStatusResponse, TaskType, utc_now
 
 COLLECTION_NAME = "research_tasks"
 
 async def update_status(task_id:str,status:TaskStatus):
-    pass
+
+    await _get_collection().update_one(
+        {"task_id": task_id},
+        {
+            "$set": {
+                "status": status.value,
+                "updated_at": utc_now(),
+            }
+        },
+    )
+
+
+
+
+async def create_task(project_id:str,task_type:TaskType):
+    setting=get_settings()
+    task_id=str(uuid4())
+
+    task={
+        "_id":task_id,
+        "project_id":project_id,
+        "task_type":task_type,
+        "status":TaskStatus.QUEUED.value,
+        "message":"任务已创建",
+        "created_at":utc_now(),
+        "updated_at":utc_now()
+    }
+    await _get_collection().insert_one(task)
+
+    return task_id
+
+
+
 
 
 def _get_collection():

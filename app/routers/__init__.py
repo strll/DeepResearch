@@ -253,7 +253,7 @@ async def create_report_task(project_id: str, request: ReportTaskCreate):
         project_id, ProjectStatus.RESEARCH_RUNNING,
     )
 
-    start_report_generation(task_id,project_id,user_instruction)
+    start_report_generation(task_id,project_id,user_instruction=request.user_instruction )
 
     return ReportTaskCreateResponse(
         task_id=task_id,
