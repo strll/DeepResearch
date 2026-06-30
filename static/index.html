@@ -145,18 +145,27 @@
   <div class="card" id="section-create">
     <h2>📝 创建研究项目</h2>
     <p class="subtitle">填写研究主题和基础设定，系统将自动生成研究大纲</p>
+
+    <!-- 快速测试 -->
+    <div class="flex flex-wrap gap-8" style="margin-bottom:20px;">
+      <span style="font-size:12px;color:var(--text-muted);line-height:32px;">快速测试：</span>
+      <a href="#" class="btn btn-sm btn-secondary" id="preset1">🤖 AI发展</a>
+      <a href="#" class="btn btn-sm btn-secondary" id="preset2">🔋 新能源</a>
+      <a href="#" class="btn btn-sm btn-secondary" id="preset3">💡 自定义简单</a>
+    </div>
+
     <form id="createForm">
       <div class="form-group">
         <label>研究主题 *</label>
-        <input type="text" id="topic" placeholder="例如：量子计算在金融风险建模中的应用" maxlength="200" required>
+        <input type="text" id="topic" value="量子计算在金融风险建模中的应用" placeholder="例如：量子计算在金融风险建模中的应用" maxlength="200" required>
       </div>
       <div class="form-group">
         <label>研究目标 *</label>
-        <textarea id="researchGoal" placeholder="描述希望达成的研究目标" maxlength="500" required></textarea>
+        <textarea id="researchGoal" placeholder="描述希望达成的研究目标" maxlength="500" required>分析量子计算在金融风险建模领域的技术进展、应用案例和发展趋势，评估其对传统金融风险管理体系的潜在影响</textarea>
       </div>
       <div class="form-group">
         <label>目标读者 *</label>
-        <input type="text" id="targetAudience" placeholder="例如：金融科技从业者、学术研究者" maxlength="100" required>
+        <input type="text" id="targetAudience" value="金融科技从业者、学术研究者、投资决策者" placeholder="例如：金融科技从业者、学术研究者" maxlength="100" required>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -620,6 +629,56 @@ async function loadAndShowReport() {
     showError('获取报告失败: ' + e.message);
   }
 }
+
+// ============================================================
+// Quick Presets
+// ============================================================
+const presets = {
+  preset1: {
+    topic: '人工智能大模型发展趋势',
+    researchGoal: '了解大模型技术最新进展',
+    targetAudience: '技术从业者',
+    region: 'global',
+    timeType: 'recent_years',
+    years: 2,
+  },
+  preset2: {
+    topic: '新能源行业投资机会分析',
+    researchGoal: '判断新能源领域的投资方向',
+    targetAudience: '投资分析师',
+    region: 'china',
+    timeType: 'recent_years',
+    years: 2,
+  },
+  preset3: {
+    topic: '远程办公对团队效率的影响',
+    researchGoal: '分析利弊',
+    targetAudience: '管理者',
+    region: 'global',
+    timeType: 'recent_years',
+    years: 3,
+  },
+};
+
+function applyPreset(name) {
+  const p = presets[name];
+  if (!p) return;
+  $('topic').value = p.topic;
+  $('researchGoal').value = p.researchGoal;
+  $('targetAudience').value = p.targetAudience;
+  $('regionScope').value = p.region;
+  $('timeScopeType').value = p.timeType;
+  if (p.timeType === 'recent_years') {
+    show('yearsGroup');
+    $('years').value = p.years;
+  } else {
+    hide('yearsGroup');
+  }
+}
+
+$('preset1').addEventListener('click', e => { e.preventDefault(); applyPreset('preset1'); });
+$('preset2').addEventListener('click', e => { e.preventDefault(); applyPreset('preset2'); });
+$('preset3').addEventListener('click', e => { e.preventDefault(); applyPreset('preset3'); });
 
 // ============================================================
 // Init

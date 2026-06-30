@@ -78,7 +78,7 @@ async def health_check() -> dict[str, str]:
 #  2. 创建研究项目
 # ---------------------------------------------------------------------------
 @app.post(
-    "/api/v1/research-projects",
+    "/research-projects",
     response_model=ResearchProjectCreateResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -133,7 +133,7 @@ async def create_project(request: ResearchProjectCreate):
 #  3. 获取大纲草案
 # ---------------------------------------------------------------------------
 @app.get(
-    "/api/v1/research-projects/{project_id}/outline",
+    "/research-projects/{project_id}/outline",
     response_model=OutlineResponse,
 )
 async def get_outline(project_id: str):
@@ -164,7 +164,7 @@ async def get_outline(project_id: str):
 #  4. 确认大纲或提交大纲修改意见
 # ---------------------------------------------------------------------------
 @app.put(
-    "/api/v1/research-projects/{project_id}/outline",
+    "/research-projects/{project_id}/outline",
     response_model=OutlineConfirmResponse | OutlineRevisionResponse,
 )
 async def update_outline(project_id: str, request: OutlineUpdateRequest):
@@ -221,7 +221,7 @@ async def update_outline(project_id: str, request: OutlineUpdateRequest):
 #  5. 提交报告生成任务
 # ---------------------------------------------------------------------------
 @app.post(
-    "/api/v1/research-projects/{project_id}/report-tasks",
+    "/research-projects/{project_id}/report-tasks",
     response_model=ReportTaskCreateResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -290,7 +290,7 @@ async def get_task_status(task_id: str):
 #  7. 获取最新报告
 # ---------------------------------------------------------------------------
 @app.get(
-    "/api/v1/research-projects/{project_id}/reports/latest",
+    "/research-projects/{project_id}/reports/latest",
     response_model=LatestReportResponse,
 )
 async def get_latest_report(project_id: str):

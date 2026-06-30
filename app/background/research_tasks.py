@@ -3,7 +3,8 @@
 该模块提供四个 run_* 函数供 celery_tasks.py 中的 Celery 任务调用，
 每个函数负责完整的任务生命周期：标记运行 → 执行业务 → 标记成功 / 失败。
 """
-
+import json
+import time
 from typing import Any
 
 from loguru import logger
@@ -56,15 +57,27 @@ async def run_generate_research_brief_task(project_id: str, task_id: str) -> Non
     try:
         await research_task_repository.mark_task_running(task_id, "正在生成研究任务书和大纲")
         await research_project_repository.update_project_status(project_id, ProjectStatus.BRIEF_GENERATING)
-        logger.info("开始生成研究任务书和大纲，project_id={}，task_id={}", project_id, task_id)
+        logger.info("[STEP 1/4] 开始生成研究任务书和大纲，project_id={}，task_id={}", project_id, task_id)
 
+        logger.info("[STEP 2/4] 初始化研究智能体...")
         agent = get_research_agent()
+        logger.info("[STEP 2/4] 研究智能体初始化完成")
+
+        logger.info("[STEP 3/4] 读取项目信息，project_id={}", project_id)
         project = await research_project_repository.get_project(project_id)
+        if project is None:
+            raise ValueError(f"项目不存在: {project_id}")
+        logger.info("[STEP 3/4] 项目信息读取完成，topic={}", project.get("topic", "未知"))
+
+        safe_project_for_agent = json.loads(json.dumps(project, default=str))
+
+        logger.info("[STEP 4/4] 调用 Agent 生成大纲，thread_id={}_{}", project_id, task_id)
         result = await agent.generate_outline(
             project_id=project_id,
-            research_project=project,
+            research_project=safe_project_for_agent,
             task_id=task_id,
         )
+        logger.info("[STEP 4/4] Agent 返回结果，has_outline={}", bool(result.get("outline")))
 
         await research_project_repository.save_research_brief_and_outline(
             project_id=project_id,
@@ -73,9 +86,10 @@ async def run_generate_research_brief_task(project_id: str, task_id: str) -> Non
         )
         await research_project_repository.update_project_status(project_id, ProjectStatus.OUTLINE_READY)
         await research_task_repository.mark_task_succeeded(task_id, "研究任务书和大纲已生成，等待用户确认")
-        logger.info("研究任务书和大纲生成完成，project_id={}，task_id={}", project_id, task_id)
+        logger.info("[完成] 研究任务书和大纲生成完成，project_id={}，task_id={}", project_id, task_id)
 
     except Exception as exc:
+        logger.error("[失败] 步骤失败，错误类型={}，详情={}", type(exc).__name__, str(exc))
         await _mark_task_failed(project_id, task_id, "研究任务书和大纲生成失败", exc)
         raise
 
@@ -114,20 +128,26 @@ async def run_generate_report_task(project_id: str, task_id: str, user_instructi
     try:
         await research_task_repository.mark_task_running(task_id, "正在执行研究并生成报告")
         await research_project_repository.update_project_status(project_id, ProjectStatus.RESEARCH_RUNNING)
-        logger.info("开始执行研究和报告渲染，project_id={}，task_id={}", project_id, task_id)
+        logger.info("[STEP 1/4] 开始执行研究和报告渲染，project_id={}，task_id={}", project_id, task_id)
 
         agent = get_research_agent()
 
-        # 第一步：执行研究
+        logger.info("[STEP 2/4] 执行研究（Agent 逐章节检索+撰写）...")
+        t0 = time.perf_counter()
         await agent.generate_research_result(
             project_id=project_id,
             user_instruction=user_instruction,
             task_id=task_id,
         )
-        research_result = await research_project_repository.get_research_result(project_id=project_id)
-        logger.info("研究结果已保存，project_id={}，task_id={}", project_id, task_id)
+        logger.info("[STEP 2/4] 研究执行完成，耗时={:.1f}s", time.perf_counter() - t0)
 
-        # 第二步：渲染 HTML 报告
+        research_result = await research_project_repository.get_research_result(project_id=project_id)
+        if research_result is None:
+            raise ValueError("研究结果为空，无法继续渲染报告")
+        sections = research_result.get("sections", []) if isinstance(research_result, dict) else []
+        logger.info("[STEP 3/4] 研究结果已保存，project_id={}，sections={}", project_id, len(sections))
+
+        logger.info("[STEP 4/4] 渲染 HTML 报告...")
         html_result = write_html(research_result)
         await report_repository.save_report_version(
             project_id=project_id,
@@ -138,9 +158,10 @@ async def run_generate_report_task(project_id: str, task_id: str, user_instructi
 
         await research_project_repository.update_project_status(project_id, ProjectStatus.REPORT_READY)
         await research_task_repository.mark_task_succeeded(task_id, "研究报告已生成")
-        logger.info("研究和报告渲染完成，project_id={}，task_id={}", project_id, task_id)
+        logger.info("[完成] 研究和报告渲染完成，project_id={}，task_id={}", project_id, task_id)
 
     except Exception as exc:
+        logger.error("[失败] 报告生成失败，错误类型={}，详情={}", type(exc).__name__, str(exc))
         await _mark_task_failed(project_id, task_id, "研究报告生成失败", exc)
         raise
 
