@@ -1,3 +1,34 @@
+"""
+TODO: 【中优先级】补充 research_tasks 中缺失的 run_* 函数
+当前状态: Celery 任务定义完整(4个任务)，但 research_tasks.py 中缺少对应的 run_* 函数
+
+缺失的 run_* 函数(research_tasks.py 中):
+1. [缺失] run_generate_research_brief_task(project_id, task_id):
+   - generate_research_brief_task() 调用此函数但不存在
+   - 需要: 标记 running -> agent.generate_research_brief() -> 保存 brief+outline -> 标记 succeeded
+
+2. [缺失] run_revise_outline_task(project_id, task_id, revision_instruction):
+   - revise_outline_task() 调用此函数但不存在
+   - 需要: 标记 running -> agent.revise_outline() -> 保存新outline -> 标记 succeeded
+
+3. [缺失] run_generate_report_task(project_id, task_id, user_instruction):
+   - generate_report_task() 调用此函数但不存在
+   - 需要: 标记 running -> agent.generate_research_result() -> agent.generate_report() -> 保存报告版本 -> 标记 succeeded
+
+4. [缺失] run_render_report_task(project_id, task_id, user_instruction):
+   - render_report_task() 调用此函数但不存在
+   - 需要: 标记 running -> 读已落库research_result -> agent.generate_report() -> 保存报告版本 -> 标记 succeeded
+
+每个函数需要的错误处理模板:
+    try:
+        await research_task_repository.mark_task_running(task_id, message)
+        # ... 业务逻辑 ...
+        await research_task_repository.mark_task_succeeded(task_id, message)
+    except Exception as exc:
+        await _mark_task_failed(project_id, task_id, message, exc)
+        raise
+"""
+
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any

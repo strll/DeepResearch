@@ -2,73 +2,67 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
+from app.config.config import get_settings
 from app.repository.mongodb import get_mongodb_database
 from app.schemas import OutlineNode, ProjectStatus, ResearchProjectCreate, ReportSource, utc_now
 
 COLLECTION_NAME = "research_projects"
 
-async def create_project(request: ResearchProjectCreate):
 
-    project_id=str(uuid4())
-    project_document={
-        "_id":project_id,
-        "topic":request.topic,
-        "status":ProjectStatus.CREATED.value,
-        "request":request.model_dump(),
+async def create_project(request: ResearchProjectCreate):
+    project_id = str(uuid4())
+    project_document = {
+        "_id": project_id,
+        "topic": request.topic,
+        "status": ProjectStatus.CREATED.value,
+        "request": request.model_dump(),
         "created_at": utc_now(),
         "updated_at": utc_now(),
 
     }
 
-
     await (get_mongodb_database()[COLLECTION_NAME]
            .insert_one(project_document))
-
-
 
     return project_id
 
 
 async def update_status(project_id: str, status: str):
     await (get_mongodb_database()[COLLECTION_NAME]
-           .update_one(
-        {"_id":project_id},
+    .update_one(
+        {"_id": project_id},
         {
             "$set":
                 {
-                    "status":status
+                    "status": status
                 }
         }
     ))
-
 
 
 async def save_outline(outline, project_id):
-
     await (get_mongodb_database()[COLLECTION_NAME]
-           .update_one(
-        {"_id":project_id},
+    .update_one(
+        {"_id": project_id},
         {
             "$set":
                 {
-                    "outline":outline["outline"],
-                    "research_brief":outline["research_brief"]
+                    "outline": outline["outline"],
+                    "research_brief": outline["research_brief"]
                 }
         }
     ))
 
 
-
 async def get_research_result(project_id: str):
-    result=await (get_mongodb_database()[COLLECTION_NAME]
-           .find_one(
-        {"_id":project_id},
-       projection={
-           "research_result":1
+    result = await (get_mongodb_database()[COLLECTION_NAME]
+    .find_one(
+        {"_id": project_id},
+        projection={
+            "research_result": 1
         }
     ))
     return result
-
 
 
 def _get_collection():
@@ -129,11 +123,11 @@ def _dump_sources(sources: list[ReportSource] | list[dict[str, Any]]) -> list[di
 
 
 async def create_project(
-    project_id: str,
-    request: ResearchProjectCreate,
-    topic: str,
-    status: ProjectStatus,
-    created_at: datetime,
+        project_id: str,
+        request: ResearchProjectCreate,
+        topic: str,
+        status: ProjectStatus,
+        created_at: datetime,
 ) -> dict[str, Any]:
     """创建研究项目记录。
 
@@ -170,8 +164,6 @@ async def get_project(project_id: str) -> dict[str, Any] | None:
 
     document = await _get_collection().find_one({"project_id": project_id})
     return _clean_document(document)
-
-
 
 
 async def update_project_status(project_id: str, status: ProjectStatus) -> None:
@@ -216,9 +208,9 @@ async def get_confirmed_outline(project_id: str) -> list[OutlineNode]:
 
 
 async def save_research_brief_and_outline(
-    project_id: str,
-    research_brief: Any,
-    outline: list[OutlineNode] | list[dict[str, Any]],
+        project_id: str,
+        research_brief: Any,
+        outline: list[OutlineNode] | list[dict[str, Any]],
 ) -> None:
     """保存研究任务书和大纲草案。
 
@@ -255,8 +247,8 @@ async def save_research_brief_and_outline(
 
 
 async def save_confirmed_outline(
-    project_id: str,
-    outline: list[OutlineNode] | list[dict[str, Any]],
+        project_id: str,
+        outline: list[OutlineNode] | list[dict[str, Any]],
 ) -> None:
     """保存用户确认后的研究大纲。
 
@@ -271,11 +263,11 @@ async def save_confirmed_outline(
 
 
 async def save_research_results(
-    project_id: str,
-    sources: list[ReportSource] | list[dict[str, Any]],
-    fact_cards: list[Any],
-    insight_cards: list[Any],
-    research_result: Any | None = None,
+        project_id: str,
+        sources: list[ReportSource] | list[dict[str, Any]],
+        fact_cards: list[Any],
+        insight_cards: list[Any],
+        research_result: Any | None = None,
 ) -> None:
     """保存研究过程产出的来源、事实卡片和洞察卡片。
 
@@ -426,3 +418,58 @@ def _dump_value(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="python")
     return value
+
+
+async def upsert_section(section: dict):
+    project_id = section["project_id"]
+    await _get_collection().update_one(
+        {"_id": project_id},  # BUG: 应为 {"_id": project_id}
+        {
+            "$pull": {"sections": {"section_id": section["section"]["section_id"]}}
+        }
+    )
+
+    await get_mongodb_database()[COLLECTION_NAME].update_one(  # BUG: 应使用 _get_collection() 保持一致
+        {"_id": project_id},  # BUG: 应为 {"_id": project_id}
+        {
+            "$push": {
+                "sections": section["section"]
+            }
+        }
+    )
+
+
+def _get_all_section_id(outline: list):
+    section_ids = []
+    for outline_node in outline:
+
+        childrens: list = outline_node.get("children", [])
+
+        if not childrens:
+            section_ids.append(outline_node["node_id"])
+        else:
+            section_ids.extend(_get_all_section_id(childrens))
+
+    return section_ids
+
+
+async def get_expected_section_ids(project_id: str) -> list[dict[str, Any]]:
+    """获取项目预计的章节 ID 列表。"""
+    # BUG: 函数没有 return 语句！需要 return _get_all_section_id(confirmed_outline)
+    # BUG: outline 可能为 None 时 outline["confirmed_outline"] 会 KeyError
+    # TODO: 添加 outline 为 None 的保护
+
+    outline: dict | None = await (_get_collection()
+                                  .find_one({"project_id": project_id},
+                                            projection={
+                                                "confirmed_outline": 1
+                                            }
+                                            ))
+
+    if outline is None:
+        return []
+    confirmed_outline = outline.get("confirmed_outline", [])
+    return _get_all_section_id(confirmed_outline)
+
+
+
