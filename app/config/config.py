@@ -25,8 +25,6 @@ class Settings(BaseSettings):
     所有字段均可通过大写环境变量覆盖，例如 ``MONGODB_URI`` 对应
     ``mongodb_uri``。``.env`` 文件中的空值会被安全地解析为 ``None``。
     """
-    # TODO: [缺失] total_retry_times: int = 5 - Agent 研究章节补写最大重试次数
-    # TODO: [缺失] external_search_timeout: int = 30 - 外部搜索请求超时秒数
     total_retry_times: int = 5
     app_name: str = "AI 研究报告工作台"
     app_version: str = "0.1.0"
@@ -50,8 +48,7 @@ class Settings(BaseSettings):
     ragflow_base_url: OptionalUrl = None
     ragflow_api_key: str | None = None
     ragflow_default_dataset_ids: str | None = None
-    # TODO: [安全] tavily_api_key 默认值硬编码了真实 API Key，应改为 None
-    tavily_api_key: str | None = "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"
+    tavily_api_key: str | None = None
 
     object_storage_endpoint: str | None = None
     object_storage_bucket: str = "deep-research"
@@ -59,7 +56,6 @@ class Settings(BaseSettings):
     object_storage_secret_key: str | None = None
     report_storage_backend: str = "local"
     report_storage_local_dir: str = "reports"
-    # TODO: [缺失] external_search_timeout: int = 30
     external_search_timeout: int = 30
 
     model_config = SettingsConfigDict(

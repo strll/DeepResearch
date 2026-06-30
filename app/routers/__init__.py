@@ -9,8 +9,13 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, APIRouter
 from starlette import status
 
-from app.background.research_tasks import start_outline_generation, start_report_generation
-from app.repository import research_task_repository, research_project_repository
+from app.background.research_tasks import (
+    start_generate_research_brief_task,
+    start_generate_report_task,
+    start_outline_generation,
+    start_report_generation,
+)
+from app.repository import research_task_repository, research_project_repository, report_repository
 from app.schemas import (
     LatestReportResponse,
     NextStep,
@@ -106,7 +111,6 @@ async def create_project(request: ResearchProjectCreate):
         message="研究任务书和大纲生成任务已创建",
     )
 
-    # TODO: 后台任务调度 — start_outline_generation 由 background 模块提供
     start_outline_generation(research_project=request, task_id=task_id,project_id=project_id)
 
 
@@ -202,7 +206,6 @@ async def update_outline(project_id: str, request: OutlineUpdateRequest):
             message="研究任务书和大纲生成任务已创建",
         )
 
-        # TODO: 后台任务调度 — start_outline_generation 由 background 模块提供
         start_outline_generation(research_project=request, task_id=task_id,project_id=project_id)
 
         return OutlineRevisionResponse(
@@ -293,20 +296,19 @@ async def get_task_status(task_id: str):
 async def get_latest_report(project_id: str):
     """获取项目的最新研究报告。
 
-    输入为项目编号；输出为 HTML 报告正文、引用来源列表和版本信息。
-    如果项目尚未完成研究（research_result 为空），返回 404 错误。
-    HTML 内容的获取优先级：
-    1. research_result.html — 报告智能体已渲染的 HTML；
-    2. research_result.content — 未渲染的原始内容；
-    3. 按 section 拼装的简易 HTML — 兜底展示方案。
+    优先从 report_versions 集合读取已保存的正式报告版本，
+    如不存在则回退到项目文档中的 research_result 字段做兜底展示。
     """
+    # 优先使用正式报告版本
+    report = await report_repository.get_latest_report(project_id)
+    if report is not None:
+        return report
 
-    # 校验项目是否存在
+    # ---- 兜底方案：从项目文档 research_result 提取 ----
     project = await research_project_repository.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="当前查询的项目不存在")
 
-    # 检查研究结果是否已生成
     research_result = project.get("research_result")
     if research_result is None:
         raise HTTPException(status_code=404, detail="当前项目尚未生成报告")

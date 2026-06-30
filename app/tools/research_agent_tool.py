@@ -44,10 +44,20 @@ def _validate_section(section: dict) -> list:
         if not source_id or not source_id in source_ids:
             errors.append("evidence_chain中的source_id不在source_ids中")
 
-    # TODO: 补充校验:
-    #   - 每个 source 必须含 source_id 和 url
-    #   - body 不能为空字符串
-    #   - section_id 不能为空字符串
+    # 补充校验: 每个 source 必须含 source_id 和 url
+    for source in sources:
+        if not source.get("source_id"):
+            errors.append("source参数中必须要有source_id键")
+        if not source.get("url"):
+            errors.append("source参数中必须要有url键")
+
+    # 补充校验: body 不能为空字符串
+    if isinstance(body, str) and body.strip() == "":
+        errors.append("body不能为空字符串")
+
+    # 补充校验: section_id 不能为空字符串
+    if isinstance(section_id, str) and section_id.strip() == "":
+        errors.append("section_id不能为空字符串")
 
     return errors
 
@@ -59,7 +69,6 @@ async def save_research_sections(project_id: str, section: dict) -> dict:
     :param section:
     :return:
     """
-    # TODO: 先调 _validate_section() 校验
     errors: list = _validate_section(section)
 
     if errors:
@@ -69,11 +78,10 @@ async def save_research_sections(project_id: str, section: dict) -> dict:
 
     await research_project_repository.upsert_section(section)
 
-    # TODO: 返回实际值而非硬编码
     return {
         "status": "ok",
         "project_id": project_id,  # 实际值
         "section_id": section.get("section", {}).get("section_id"),  # 实际值
-        "sources_saved": section,  # 实际值
+        "sources_saved": len(section.get("source", [])),  # 实际来源数量
         "message": "research section saved"
     }

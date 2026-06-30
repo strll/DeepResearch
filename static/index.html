@@ -1,16 +1,4 @@
 <!DOCTYPE html>
-<!--
-TODO: 【低优先级】前端交互增强
-参照: static/index.html (参考项目)
-
-当前状态: 功能基本完整，5步流程可用。可增强:
-1. 大纲树递归渲染: 当前为扁平展示，需支持多层 children 嵌套缩进
-2. 轮询容错: 增加最大轮询次数(300次=10分钟)后自动终止
-3. 报告样式: 增强 report-frame 内的排版(表格、引用、代码块)
-4. 状态恢复: 页面刷新后根据 project_id 恢复当前步骤
-5. 响应式: 移动端适配
-6. 来源链接: 区分 public_web 和 internal_knowledge_base 来源类型
--->
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -99,6 +87,12 @@ TODO: 【低优先级】前端交互增强
 
   /* Report */
   .report-frame { width: 100%; min-height: 500px; border: 1px solid var(--border); border-radius: var(--radius); background: white; padding: 24px; overflow-x: auto; }
+  .report-frame table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  .report-frame th, .report-frame td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+  .report-frame th { background: var(--bg); font-weight: 600; }
+  .report-frame blockquote { border-left: 4px solid var(--primary); padding: 8px 16px; margin: 16px 0; background: var(--bg); }
+  .report-frame pre { background: var(--bg); padding: 16px; border-radius: 8px; overflow-x: auto; }
+  .report-frame code { background: var(--bg); padding: 2px 6px; border-radius: 4px; font-size: 14px; }
 
   /* Messages */
   .msg { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
@@ -118,6 +112,15 @@ TODO: 【低优先级】前端交互增强
   .gap-8 { gap: 8px; }
   .flex { display: flex; }
   .flex-wrap { flex-wrap: wrap; }
+
+  .report-frame table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+.report-frame th, .report-frame td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+.report-frame th { background: #f8fafc; font-weight: 600; }
+.report-frame blockquote { border-left: 4px solid #4f46e5; padding: 8px 16px; margin: 16px 0; background: #f8fafc; }
+.report-frame pre { background: #f8fafc; padding: 16px; border-radius: 8px; overflow-x: auto; }
+.report-frame code { background: #f8fafc; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+
+
 </style>
 </head>
 <body>
@@ -367,11 +370,11 @@ function startPolling(taskId, onSucceeded, onFailed, statusCallback) {
       }
     } catch (e) {
       debug('Poll error: ' + e.message);
-      // 轮询中偶尔失败不中断，最多重试 100 次
-      if (++count > 100) {
+      // 轮询中偶尔失败不中断，最多重试 300 次（10 分钟）
+      if (++count > 300) {
         clearInterval(state.polling);
         state.polling = null;
-        showError('轮询任务状态超时: ' + e.message);
+        showError('任务执行超时（已等待10分钟），请刷新页面重试');
       }
     }
   }, 2000); // poll every 2 seconds

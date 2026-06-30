@@ -230,20 +230,20 @@ async def save_research_brief_and_outline(
     )
 
 
-# async def save_outline(
-#     project_id: str,
-#     outline: list[OutlineNode] | list[dict[str, Any]],
-# ) -> None:
-#     """保存研究大纲草案。
-#
-#     输入为项目编号和大纲节点列表，输出为空。该函数用于大纲修改任务完成后覆盖
-#     当前大纲草案。
-#     """
-#
-#     await _get_collection().update_one(
-#         {"project_id": project_id},
-#         {"$set": {"outline": _dump_outline(outline), "updated_at": utc_now()}},
-#     )
+async def save_outline(
+    project_id: str,
+    outline: list[OutlineNode] | list[dict[str, Any]],
+) -> None:
+    """保存研究大纲草案。
+
+    输入为项目编号和大纲节点列表，输出为空。该函数用于大纲修改任务完成后覆盖
+    当前大纲草案。
+    """
+
+    await _get_collection().update_one(
+        {"project_id": project_id},
+        {"$set": {"outline": _dump_outline(outline), "updated_at": utc_now()}},
+    )
 
 
 async def save_confirmed_outline(
@@ -380,6 +380,34 @@ async def get_research_sections(project_id: str) -> list[dict[str, Any]]:
     return sorted(sections, key=lambda section: str(section.get("section_id") or ""))
 
 
+async def get_saved_sections(project_id: str) -> list[str]:
+    """读取当前项目已保存的研究章节 ID 列表。
+
+    输入为项目编号，输出为已保存的 section_id 字符串列表。
+    用于 Agent 判断哪些章节已完成、哪些需要补写。
+    """
+
+    document = await _get_collection().find_one({"project_id": project_id}, {"sections": 1})
+    if document is None:
+        return []
+    return [
+        str(section["section_id"])
+        for section in document.get("sections", [])
+        if isinstance(section, dict) and section.get("section_id")
+    ]
+
+
+async def get_seaved_sections_detial(project_id: str) -> dict:
+    """读取当前项目已保存的研究章节详情（以 section_id 为 key 的字典）。
+
+    输入为项目编号，输出为 {section_id: section_dict} 的映射。
+    用于 Agent 补写缺失章节时向 LLM 提供已完成的上下文。
+    """
+
+    sections = await get_research_sections(project_id)
+    return {str(s["section_id"]): s for s in sections if s.get("section_id")}
+
+
 async def get_research_sources(project_id: str) -> list[dict[str, Any]]:
     """读取当前项目已落库的研究来源。"""
 
@@ -423,14 +451,14 @@ def _dump_value(value: Any) -> Any:
 async def upsert_section(section: dict):
     project_id = section["project_id"]
     await _get_collection().update_one(
-        {"_id": project_id},  # BUG: 应为 {"_id": project_id}
+        {"project_id": project_id},
         {
             "$pull": {"sections": {"section_id": section["section"]["section_id"]}}
         }
     )
 
-    await get_mongodb_database()[COLLECTION_NAME].update_one(  # BUG: 应使用 _get_collection() 保持一致
-        {"_id": project_id},  # BUG: 应为 {"_id": project_id}
+    await _get_collection().update_one(
+        {"project_id": project_id},
         {
             "$push": {
                 "sections": section["section"]
@@ -454,10 +482,7 @@ def _get_all_section_id(outline: list):
 
 
 async def get_expected_section_ids(project_id: str) -> list[dict[str, Any]]:
-    """获取项目预计的章节 ID 列表。"""
-    # BUG: 函数没有 return 语句！需要 return _get_all_section_id(confirmed_outline)
-    # BUG: outline 可能为 None 时 outline["confirmed_outline"] 会 KeyError
-    # TODO: 添加 outline 为 None 的保护
+
 
     outline: dict | None = await (_get_collection()
                                   .find_one({"project_id": project_id},

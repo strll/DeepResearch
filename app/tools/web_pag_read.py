@@ -1,35 +1,3 @@
-"""
-TODO: 【低优先级】增强网页读取工具的错误处理和元数据提取
-参照: app/tools/web_reader.py (参考项目) - 完整的 web_reader 实现
-
-当前状态: 基本功能完整，但可做以下增强:
-
-1. [增强] 函数签名标准化:
-   - 参考项目使用 read_web_page(url, max_chars) 命名
-   - 当前项目模块名为 web_pag_read，需确认 Agent tools 注册时的函数名
-
-2. [增强] 错误处理:
-   - 当前使用同步 urllib，参考项目使用 asyncio.to_thread() 包装
-   - 当前已捕获 URLError/HTTPError，可补充 TimeoutError/UnicodeDecodeError/OSError
-
-3. [增强] HTMLParser 扩展:
-   - 跳过更多噪音标签: noscript, svg, nav, footer
-   - 增加 meta 标签发布时间提取: article:published_time, datePublished, pubdate, date
-
-4. [增强] 发布时间提取:
-   - 当前只从 HTML meta 标签提取
-   - 可增加 JSON-LD schema.org datePublished/dateModified 正则匹配
-
-5. [增强] 响应元数据:
-   - 返回 content_type (响应 Content-Type)
-   - 返回 truncated 标记 (内容是否被截断)
-   - 返回 source_type: "public_web"
-
-6. [可选] 使用 httpx 替代 urllib:
-   - 统一 HTTP 客户端(ragflow_search 用 httpx)
-   - 更好的超时控制和重试机制
-"""
-
 import asyncio
 import re
 from html.parser import HTMLParser
@@ -177,3 +145,5 @@ def _extract_published_at(html: str) -> str | None:
 
 def _normalize_space(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
+
+__all__ = ["read_web_page"]
