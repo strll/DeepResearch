@@ -21,7 +21,7 @@ def _normalize_tavily_result(item: dict[str, Any]) -> dict[str, Any]:
 
 
 async def external_search(query: str,
-                          max_results: int = 3,
+                          max_results: int = 1,
                           search_depth: str = "basic",
                           include_domains: list[str] | None = None,
                           exclude_domains: list[str] | None = None,

@@ -11,40 +11,46 @@ async def _validate_section(section: dict) -> list:
     if not _section or not project_id:
         errors.append("section参数中必须要有section键和project_id")
         return errors
-    section_id = _section.get("section_id",None)
+    section_id = _section.get("section_id", None)
     expected_section_ids = await research_project_repository.get_expected_section_ids(project_id=project_id)
 
     if not section_id or not expected_section_ids or not section_id in expected_section_ids:
         errors.append("section_id不在expected_section_ids中 需要重新生成大纲")
-    title = section.get("title", None)
+    title = _section.get("title", None)
     if not title:
         errors.append("section参数中必须要有title键")
 
-    summary = section.get("summary", None)
+    summary = _section.get("summary", None)
     if not summary:
         errors.append("section参数中必须要有summary键")
 
-    body = section.get("body", None)
+    body = _section.get("body", None)
 
     if not body or len(body) < 200:
         errors.append("section参数中必须要有body键 或body总字数小于200 需要重新生成")
 
-    evidence_chain: list | None = section.get("evidence_chain")
+    evidence_chain: list | None = _section.get("evidence_chain")
+    sources: list | None = _section.get("sources")
 
-    sources: list | None = section.get("source")
+    if evidence_chain is None or sources is None:
+        errors.append("section参数中必须要有evidence_chain键和sources键")
+        return errors
 
-    # BUG: 应该是 if not evidence_chain or not sources: (缺少两个 not)
-    if not evidence_chain or not sources:
-        errors.append("section参数中必须要有evidence_chain键和source键")
+    if not isinstance(sources, list):
+        sources = []
 
-    source_ids = [source.get("source_id") for source in sources]
+    source_ids = [s.get("source_id") for s in sources if isinstance(s, dict)]
 
     for evidence in evidence_chain:
-        source_id = evidence.get("source_ids")
-        if not source_id or not source_id in source_ids:
-            errors.append("evidence_chain中的source_id不在source_ids中")
+        if not isinstance(evidence, dict):
+            continue
+        ev_source_ids = evidence.get("source_ids", [])
+        if not isinstance(ev_source_ids, list):
+            ev_source_ids = [ev_source_ids] if ev_source_ids else []
+        for sid in ev_source_ids:
+            if sid not in source_ids:
+                errors.append(f"evidence_chain中的source_id {sid} 不在source_ids中")
 
-    # 补充校验: 每个 source 必须含 source_id 和 url
     for source in sources:
         if not source.get("source_id"):
             errors.append("source参数中必须要有source_id键")
@@ -69,19 +75,24 @@ async def save_research_sections(project_id: str, section: dict) -> dict:
     :param section:
     :return:
     """
-    errors: list = await _validate_section(section)
+    wrapped = {
+        "project_id": project_id,
+        "section": section,
+    }
+
+    errors: list = await _validate_section(wrapped)
 
     if errors:
         return {"status": "error",
                 "errors": errors
                 }
 
-    await research_project_repository.upsert_section(section)
+    await research_project_repository.upsert_section(wrapped)
 
     return {
         "status": "ok",
-        "project_id": project_id,  # 实际值
-        "section_id": section.get("section", {}).get("section_id"),  # 实际值
-        "sources_saved": len(section.get("source", [])),  # 实际来源数量
+        "project_id": project_id,
+        "section_id": section.get("section_id"),
+        "sources_saved": len(section.get("sources", [])),
         "message": "research section saved"
     }

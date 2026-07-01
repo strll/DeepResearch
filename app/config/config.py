@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     所有字段均可通过大写环境变量覆盖，例如 ``MONGODB_URI`` 对应
     ``mongodb_uri``。``.env`` 文件中的空值会被安全地解析为 ``None``。
     """
-    total_retry_times: int = 5
+    total_retry_times: int = 1
     app_name: str = "AI 研究报告工作台"
     app_version: str = "0.1.0"
     environment: str = "local"
@@ -90,9 +90,9 @@ class Settings(BaseSettings):
     external_search_timeout: int = 30
 
     # 网页读取配置
-    web_read_timeout: int = 15          # 单页读取超时（秒）
+    web_read_timeout: int = 1           # 单页读取超时（秒）
     web_read_max_chars: int = 8000      # 单页最大字符数（500~30000）
-    web_read_max_pages_per_section: int = 3  # 每章节最多读取网页数（给 Agent prompt 用的上限）
+    web_read_max_pages_per_section: int = 2  # 每章节最多读取网页数
 
     model_config = SettingsConfigDict(
         env_file=_PROJECT_ROOT / ".env",

@@ -134,17 +134,48 @@ async def run_generate_report_task(project_id: str, task_id: str, user_instructi
 
         logger.info("[STEP 2/4] 执行研究（Agent 逐章节检索+撰写）...")
         t0 = time.perf_counter()
-        await agent.generate_research_result(
+        research_result = await agent.generate_research_result(
             project_id=project_id,
             user_instruction=user_instruction,
             task_id=task_id,
         )
         logger.info("[STEP 2/4] 研究执行完成，耗时={:.1f}s", time.perf_counter() - t0)
 
-        research_result = await research_project_repository.get_research_result(project_id=project_id)
-        if research_result is None:
-            raise ValueError("研究结果为空，无法继续渲染报告")
+        # generate_research_result 返回了 research_result，直接使用
         sections = research_result.get("sections", []) if isinstance(research_result, dict) else []
+        if not sections:
+            logger.warning("generate_research_result 返回的 research_result 没有章节数据，"
+                           "回退到从 MongoDB 读取")
+            research_result = await research_project_repository.get_research_result(project_id=project_id)
+            if isinstance(research_result, str):
+                try:
+                    research_result = json.loads(research_result)
+                except Exception:
+                    research_result = None
+            elif not isinstance(research_result, dict):
+                research_result = None
+            if research_result is None:
+                project_doc = await research_project_repository.get_project(project_id=project_id)
+                if not project_doc:
+                    raise ValueError(f"项目不存在: {project_id}")
+                sections = await research_project_repository.get_research_sections(project_id)
+                sources = project_doc.get("sources", [])
+                fact_cards = project_doc.get("fact_cards", [])
+                insight_cards = project_doc.get("insight_cards", [])
+                research_result = {
+                    "title": project_doc.get("topic", "研究报告"),
+                    "sections": sections,
+                    "sources": sources,
+                    "fact_cards": fact_cards,
+                    "insight_cards": insight_cards,
+                }
+            sections = research_result.get("sections", []) if isinstance(research_result, dict) else []
+        if not sections:
+            raise ValueError(
+                f"研究结果中没有章节数据（project_id={project_id}）。"
+                f"可能原因：LLM 未调用 save_research_sections 工具，"
+                f"或工具调用被校验逻辑拒绝。请查看 Celery 日志确认 Agent 输出。"
+            )
         logger.info("[STEP 3/4] 研究结果已保存，project_id={}，sections={}", project_id, len(sections))
 
         logger.info("[STEP 4/4] 渲染 HTML 报告...")

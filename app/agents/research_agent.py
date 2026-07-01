@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from app.config.config import get_settings
 from app.repository import research_project_repository
 from app.repository.research_project_repository import get_outline, get_confirmed_outline
-from app.tools.web_pag_read import read_web_page
+from app.tools.web_pag_read import read_web_page, reset_page_read_counter
 from app.tools.external_search import external_search
 from app.tools.ragflow_search import ragflow_search
 from app.tools.research_agent_tool import save_research_sections
@@ -233,12 +233,14 @@ class ResearchAgent:
 
     async def generate_research_result(self, project_id: str, user_instruction, task_id) -> dict:
         setting = get_settings()
+        reset_page_read_counter()
         outline = await get_confirmed_outline(project_id=project_id)
         logger.info("[Agent.研究] 开始执行研究，project_id={}，outline_nodes={}，retry_limit={}",
                     project_id, len(outline), setting.total_retry_times)
 
         payload = {
             "task_name": "generate_report",
+            "project_id": project_id,
             "outline": outline,
             "user_instruction": user_instruction
         }
@@ -279,6 +281,7 @@ class ResearchAgent:
 
                 payload = {
                     "task_name": "generate_report",
+                    "project_id": project_id,
                     "outline": outline,
                     "user_instruction": user_instruction,
                     "saved_sections": save_sections,
@@ -311,6 +314,32 @@ class ResearchAgent:
                 logger.warning("[Agent.研究] 重试耗尽，仍有 {} 个章节缺失: {}", len(missing), sorted(missing))
         else:
             logger.info("[Agent.研究] 所有章节首轮即已完成，无需重试")
+
+        # 保存完毕后，把 research_result 写回 MongoDB，报告渲染阶段可以直接读取
+        project_doc = await research_project_repository.get_project(project_id)
+        if project_doc:
+            saved_sections = await research_project_repository.get_research_sections(project_id)
+            all_sources = project_doc.get("sources", [])
+            all_fact_cards = project_doc.get("fact_cards", [])
+            all_insight_cards = project_doc.get("insight_cards", [])
+            research_result = {
+                "title": project_doc.get("topic", "研究报告"),
+                "sections": saved_sections,
+                "sources": all_sources,
+                "fact_cards": all_fact_cards,
+                "insight_cards": all_insight_cards,
+            }
+            await research_project_repository.save_research_results(
+                project_id=project_id,
+                sources=all_sources,
+                fact_cards=all_fact_cards,
+                insight_cards=all_insight_cards,
+                research_result=research_result,
+            )
+            logger.info("[Agent.研究] research_result 已写回 MongoDB，project_id={}，sections={}",
+                        project_id, len(saved_sections))
+            return research_result
+        return {"title": "研究报告", "sections": [], "sources": [], "fact_cards": [], "insight_cards": []}
 
     async def generate_report(self, project, outline, user_instruction) -> dict:
         from app.tools.render_html import write_html_report
@@ -357,11 +386,24 @@ def get_research_agent():
     if _research_agent is None:
         setting = get_settings()
 
+        search_tools = [read_web_page]
+        capabilities = ["网页读取"]
+
+        if setting.tavily_api_key:
+            search_tools.append(external_search)
+            capabilities.append("公开互联网搜索")
+
+        if setting.ragflow_base_url and setting.ragflow_api_key:
+            search_tools.append(ragflow_search)
+            capabilities.append("RAGFlow内部知识库检索")
+
+        description = "负责" + "、".join(capabilities) + "和证据整理"
+
         information_search_agent = {
             "name": "information_search",
-            "description": "负责公开或联网检索,网页读取,RAGFlow内部知识库检索和证据整理",
+            "description": description,
             "system_prompt": _load_prompt(Path(__file__).parent / "prompts" / "search_agent.md"),
-            "tools": [external_search, ragflow_search, read_web_page],
+            "tools": search_tools,
             "model": f"{setting.llm_provider}:{setting.llm_model_name}",
         }
 
