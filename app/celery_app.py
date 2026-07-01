@@ -30,9 +30,6 @@
 # ============================================================================
 
 from celery import Celery
-from celery.signals import worker_ready
-from loguru import logger
-import sys
 
 from app.config.config import Settings, get_settings
 

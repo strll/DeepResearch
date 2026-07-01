@@ -2,7 +2,7 @@ from app.config.config import get_settings
 from app.repository import research_project_repository
 
 
-def _validate_section(section: dict) -> list:
+async def _validate_section(section: dict) -> list:
     errors: list = []
 
     _section = section.get("section", None)
@@ -11,8 +11,8 @@ def _validate_section(section: dict) -> list:
     if not _section or not project_id:
         errors.append("section参数中必须要有section键和project_id")
         return errors
-    section_id = section["section_id"]
-    expected_section_ids = research_project_repository.get_expected_section_ids(project_id=project_id)
+    section_id = _section.get("section_id",None)
+    expected_section_ids = await research_project_repository.get_expected_section_ids(project_id=project_id)
 
     if not section_id or not expected_section_ids or not section_id in expected_section_ids:
         errors.append("section_id不在expected_section_ids中 需要重新生成大纲")
@@ -69,7 +69,7 @@ async def save_research_sections(project_id: str, section: dict) -> dict:
     :param section:
     :return:
     """
-    errors: list = _validate_section(section)
+    errors: list = await _validate_section(section)
 
     if errors:
         return {"status": "error",

@@ -7,6 +7,7 @@ from deepagents import create_deep_agent
 from deepagents.backends.utils import create_file_data
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
+from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
 from loguru import logger
 from pydantic import BaseModel, Field
 
@@ -64,25 +65,79 @@ class ResearchAgent:
 
     def __init__(self, manager_agent):
         self.manager_agent: CompiledStateGraph = manager_agent
+        self._step_counter = 0
 
-    # async def generate_outline(self, project_id: str, research_project, task_id):
-    #     result = await self.manager_agent.ainvoke({
-    #         "messages": [
-    #             {"role": "user", "content": f"请基于以下设定生成研究大纲 {json.dumps(research_project, ensure_ascii=False)}"}
-    #         ]
-    #     },
-    #         config={"configurable": {"thread_id": f"{project_id}_{task_id}"}}  # type: ignore
-    #     )
-    #
-    #     ai_message = result["messages"][-1].content
-    #     try:
-    #         final_result = json.loads(ai_message)
-    #     except Exception as e:
-    #         final_result = {"error": str(e)}
-    #
-    #     return final_result
+    # ========================================================================
+    #  思考过程展示
+    # ========================================================================
+
+    def _reset_step_counter(self):
+        """每次新任务调用前重置步骤计数器。"""
+        self._step_counter = 0
+
+    def _next_step(self) -> int:
+        self._step_counter += 1
+        return self._step_counter
+
+    def _log_thinking_process(self, messages: list, tag: str = "Agent") -> None:
+        """遍历 ainvoke 返回的 messages，打印 LLM 完整思考过程。
+
+        LangGraph 的 StateGraph 在执行过程中会将每一步交互都追加到 messages 列表中，
+        包括：用户输入、AI 思考/回复、工具调用请求、工具执行结果、子智能体消息等。
+        此方法遍历并结构化输出这些消息，使开发者可以追溯智能体的每一步决策。
+        """
+        for i, msg in enumerate(messages):
+            if isinstance(msg, HumanMessage):
+                content = self._truncate(msg.content, 200)
+                logger.info("[{}:步骤{}] 👤 用户输入: {}", tag, self._next_step(), content)
+
+            elif isinstance(msg, AIMessage):
+                # AI 的文本回复（推理/规划/总结）
+                if msg.content:
+                    content = self._truncate(str(msg.content), 300)
+                    logger.info("[{}:步骤{}] 🤖 AI 思考: {}", tag, self._next_step(), content)
+
+                # AI 发起的工具调用
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        tool_name = tc.get("name", "unknown")
+                        tool_args = self._truncate(json.dumps(tc.get("args", {}), ensure_ascii=False), 200)
+                        logger.info("[{}:步骤{}] 🔧 调用工具: {}，参数={}", tag, self._next_step(), tool_name, tool_args)
+
+            elif isinstance(msg, ToolMessage):
+                # 工具执行结果
+                result_preview = self._truncate(str(msg.content), 200)
+                logger.info("[{}:步骤{}] 📋 工具返回 ({}): {}", tag, self._next_step(), msg.name, result_preview)
+
+    async def _invoke_and_log(self, input_data: dict, config: dict, tag: str = "Agent"):
+        """调用 agent 并自动打印思考过程。
+
+        封装 ainvoke，在返回前将所有 messages 通过 _log_thinking_process 输出，
+        同时对整体耗时进行汇总日志。
+        """
+        logger.info("[{}] ═══ 开始执行任务 ═══", tag)
+        t0 = time.perf_counter()
+        result = await self.manager_agent.ainvoke(input_data, config)
+        elapsed = time.perf_counter() - t0
+
+        messages = result.get("messages", [])
+        self._log_thinking_process(messages, tag=tag)
+        logger.info("[{}] ═══ 任务执行完成，总消息数={}，总耗时={:.1f}s ═══", tag, len(messages), elapsed)
+        return result
+
+    @staticmethod
+    def _truncate(text: str, max_len: int) -> str:
+        """截断过长文本用于日志展示。"""
+        if not text or len(text) <= max_len:
+            return str(text) if text else ""
+        return str(text)[:max_len] + f"...(共{len(text)}字符)"
+
+    # ========================================================================
+    #  业务方法
+    # ========================================================================
 
     async def generate_outline(self, project_id: str, research_project, task_id):
+        self._reset_step_counter()
         payload = {
             "task_name": "generate_research_brief",
             "project": research_project,
@@ -92,9 +147,8 @@ class ResearchAgent:
         logger.info("[Agent.大纲] 开始调用 LLM，topic={}，payload_size={} chars",
                     research_project.get("topic", "未知"), len(task_json))
 
-        t0 = time.perf_counter()
-        result = await self.manager_agent.ainvoke(
-            {
+        result = await self._invoke_and_log(
+            input_data={
                 "messages": [
                     {
                         "role": "user",
@@ -109,14 +163,14 @@ class ResearchAgent:
                     "/research/task_payload.json": create_file_data(task_json),
                 },
             },
-            config={"configurable": {"thread_id": f"research:{project_id}:{task_id}"}}
+            config={"configurable": {"thread_id": f"research:{project_id}:{task_id}"}},
+            tag="Agent.大纲",
         )
-        elapsed = time.perf_counter() - t0
 
         ai_message = result["messages"][-1].content
         final_result = self._parse_json_response(ai_message)
-        logger.info("[Agent.大纲] LLM 返回，耗时={:.1f}s，响应长度={} chars，has_outline={}，nodes={}",
-                    elapsed, len(ai_message), bool(final_result.get("outline")),
+        logger.info("[Agent.大纲] LLM 返回，响应长度={} chars，has_outline={}，nodes={}",
+                    len(ai_message), bool(final_result.get("outline")),
                     len(final_result.get("outline", [])))
         return final_result
 
@@ -126,8 +180,8 @@ class ResearchAgent:
         if not stripped:
             return {}
         # 去掉代码块标记
-        if stripped.startswith("```"):
-            stripped = stripped.removeprefix("```json").removeprefix("```").strip()
+        if stripped.startswith("``"):
+            stripped = stripped.removeprefix("``json").removeprefix("``").strip()
             stripped = stripped.removesuffix("```").strip()
         try:
             parsed = json.loads(stripped)
@@ -145,7 +199,8 @@ class ResearchAgent:
         return {"error": "JSON解析失败", "raw": text[:500]}
 
     async def revise_outline(self, project_id: str, research_project, revision_instruction, task_id: str) -> dict:
-        outline = get_outline(project_id)
+        self._reset_step_counter()
+        outline =await get_outline(project_id)
         logger.info("[Agent.修改大纲] 开始调用 LLM，project_id={}，nodes={}，指令长度={}",
                     project_id, len(outline), len(revision_instruction))
 
@@ -157,9 +212,8 @@ class ResearchAgent:
             "research_project": research_project,
         }
 
-        t0 = time.perf_counter()
-        result = await self.manager_agent.ainvoke(
-            {
+        result = await self._invoke_and_log(
+            input_data={
                 "messages": [
                     {"role": "user", "content": "请完成文件 /revise_outline.json 当中描述的任务。先使用 todo 规划步骤；最终只返回严格 JSON，不要添加任何解释文字。"},
                 ],
@@ -167,14 +221,14 @@ class ResearchAgent:
                     "/revise_outline.json": create_file_data(_safe_json_dumps(revice))
                 }
             },
-            config={"configurable": {"thread_id": f"research:{project_id}:{task_id}"}}
+            config={"configurable": {"thread_id": f"research:{project_id}:{task_id}"}},
+            tag="Agent.修改大纲",
         )
-        elapsed = time.perf_counter() - t0
 
         ai_message = result["messages"][-1].content
         parsed = self._parse_json_response(ai_message)
-        logger.info("[Agent.修改大纲] LLM 返回，耗时={:.1f}s，响应长度={} chars，new_nodes={}",
-                    elapsed, len(ai_message), len(parsed.get("outline", [])))
+        logger.info("[Agent.修改大纲] LLM 返回，响应长度={} chars，new_nodes={}",
+                    len(ai_message), len(parsed.get("outline", [])))
         return parsed
 
     async def generate_research_result(self, project_id: str, user_instruction, task_id) -> dict:
@@ -196,16 +250,18 @@ class ResearchAgent:
         )
 
         t0 = time.perf_counter()
-        await self.manager_agent.ainvoke(
-            {
+        result = await self._invoke_and_log(
+            input_data={
                 "messages": [{"role": "user", "content": JSON_HINT}],
                 "files": {
                     "/research/task_payload.json": create_file_data(_safe_json_dumps(payload)),
                     "/research/workspace/README.md": create_file_data("该目录用于保存检索摘要、来源整理、事实卡片和报告草稿。"),
                 }
             },
-            config={"configurable": {"thread_id": f"research:{project_id}:{task_id}_initial"}}
+            config={"configurable": {"thread_id": f"research:{project_id}:{task_id}_initial"}},
+            tag="Agent.研究:首轮",
         )
+
         logger.info("[Agent.研究] 首轮 LLM 调用完成，耗时={:.1f}s", time.perf_counter() - t0)
 
         save_sections_ids: list[str] = await research_project_repository.get_saved_sections(project_id)
@@ -230,14 +286,15 @@ class ResearchAgent:
                 }
 
                 t_retry = time.perf_counter()
-                await self.manager_agent.ainvoke(
-                    {
+                await self._invoke_and_log(
+                    input_data={
                         "messages": [{"role": "user", "content": JSON_HINT}],
                         "files": {
                             "/research/task_payload.json": create_file_data(_safe_json_dumps(payload)),
                         }
                     },
-                    config={"configurable": {"thread_id": f"research:{project_id}:{task_id}_retry_{retry_count}"}}
+                    config={"configurable": {"thread_id": f"research:{project_id}:{task_id}_retry_{retry_count}"}},
+                    tag=f"Agent.研究:重试{retry_count + 1}/{total_retry_times}",
                 )
                 elapsed_retry = time.perf_counter() - t_retry
 
@@ -316,5 +373,7 @@ def get_research_agent():
             checkpointer=InMemorySaver()
         )
 
-        _research_agent = ResearchAgent(manager_agent=manager_agent)
+        _research_agent = ResearchAgent(manager_agent)
+
     return _research_agent
+

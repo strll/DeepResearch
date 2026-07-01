@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     report_storage_local_dir: str = "reports"
     external_search_timeout: int = 30
 
+    # 网页读取配置
+    web_read_timeout: int = 15          # 单页读取超时（秒）
+    web_read_max_chars: int = 8000      # 单页最大字符数（500~30000）
+    web_read_max_pages_per_section: int = 3  # 每章节最多读取网页数（给 Agent prompt 用的上限）
+
     model_config = SettingsConfigDict(
         env_file=_PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",

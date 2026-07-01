@@ -147,7 +147,6 @@ def _format_error(exc: Exception) -> str:
 
 
 def _normalize_chunk(item: dict[str, Any]) -> dict[str, Any]:
-    print(f'当前的item为：\n\n{item}')
     content = item.get("content") or item.get("text") or item.get("chunk") or ""
     score = item.get("similarity")
     if score is None:

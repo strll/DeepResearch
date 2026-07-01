@@ -14,7 +14,9 @@ from app.background.research_tasks import (
     start_generate_report_task,
     start_outline_generation,
     start_report_generation,
+    start_revise_outline_task,
 )
+
 from app.repository import research_task_repository, research_project_repository, report_repository
 from app.schemas import (
     LatestReportResponse,
@@ -202,11 +204,16 @@ async def update_outline(project_id: str, request: OutlineUpdateRequest):
         # 更新项目状态为 OUTLINE_REVISING，表示大纲正在被 AI 重新生成
         task_id = await _create_task(
             project_id=project_id,
-            task_type=TaskType.GENERATE_RESEARCH_BRIEF,
-            message="研究任务书和大纲生成任务已创建",
+            task_type=TaskType.REVISE_OUTLINE,
+            message="研究大纲修改任务已创建",
         )
 
-        start_outline_generation(research_project=request, task_id=task_id,project_id=project_id)
+        # 投递大纲修改任务到 Celery，由 info_search_agent 根据用户指令修订大纲
+        start_revise_outline_task(
+            project_id=project_id,
+            task_id=task_id,
+            revision_instruction=request.revision_instruction or "",
+        )
 
         return OutlineRevisionResponse(
             project_id=project_id,

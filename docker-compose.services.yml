@@ -1,0 +1,19 @@
+# DeepResearch 核心服务（MongoDB + Redis）
+# 启动: docker compose -f docker-compose.services.yml up -d
+
+services:
+  mongo:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./data/mongo:/data/db
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./data/redis:/data
+    restart: unless-stopped
